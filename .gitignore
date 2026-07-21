@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+modelo/
+cache/
+saidas/
+*.pyc

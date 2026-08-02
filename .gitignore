@@ -4,3 +4,6 @@ modelo/
 cache/
 saidas/
 *.pyc
+
+# sessão logada do Instagram/YouTube exportada — NUNCA versionar
+cookies.txt

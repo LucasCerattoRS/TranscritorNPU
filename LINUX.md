@@ -1,7 +1,12 @@
-# Port pro Linux (Fedora) — conceito, não implementado ainda
+# Port pro Linux (Fedora)
 
-Documento de planejamento. Nada aqui foi executado; é o roteiro pra quando decidirmos
-rodar o Transcritor NPU no lado Fedora do dual boot em vez do Windows.
+**Status (02/08/2026): código adaptado, não testado no Fedora ainda** — mudanças
+feitas numa sessão Windows, sem como rodar/validar no Linux daqui. `app.py` não
+tem mais o caminho do Tesseract fixo pro Windows (`shutil.which` detecta se já
+está no PATH, só usa o caminho hardcoded como fallback e só no Windows) e existe
+`iniciar.sh` equivalente ao `Iniciar Transcritor.bat`. O resto deste documento
+(driver NPU, dependências de sistema) segue como roteiro — confirmar rodando de
+verdade no Fedora antes de considerar concluído.
 
 ## Por que é viável
 

@@ -6,7 +6,9 @@ Aceita qualquer áudio ou vídeo que o ffmpeg leia (arquivo ou link via yt-dlp)
 e imagens (OCR via Tesseract).
 """
 
+import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime
@@ -27,8 +29,13 @@ CACHE = PASTA / "cache"
 SAIDAS.mkdir(exist_ok=True)
 CACHE.mkdir(exist_ok=True)
 
-# Instalado via `winget install UB-Mannheim.TesseractOCR`; não fica no PATH por padrão.
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# No Linux (`sudo dnf install tesseract`) o binário já cai no PATH e o pytesseract
+# acha sozinho. No Windows, o `winget install UB-Mannheim.TesseractOCR` não
+# registra no PATH por padrão, então só fixamos o caminho ali se for preciso.
+if sys.platform == "win32" and shutil.which("tesseract") is None:
+    caminho_padrao = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    if caminho_padrao.exists():
+        pytesseract.pytesseract.tesseract_cmd = str(caminho_padrao)
 
 IDIOMAS = {
     "Detectar automaticamente": "auto",

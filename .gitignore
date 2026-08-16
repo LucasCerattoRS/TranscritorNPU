@@ -7,3 +7,6 @@ saidas/
 
 # sessão logada do Instagram/YouTube exportada — NUNCA versionar
 cookies.txt
+
+# PDFs pessoais de entrada — dados do usuario, nunca versionar
+entrada/

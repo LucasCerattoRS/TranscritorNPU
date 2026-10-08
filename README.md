@@ -108,8 +108,6 @@ Tesseract (pytesseract) · PyMuPDF · NumPy · pytest.
 
 - Validar o port no Fedora (NPU via `intel_vpu`).
 - Download de Instagram depende de `cookies.txt` ou do Brave fechado; sem isso falha.
-- `experimentos-openvino/server.py` escuta em `0.0.0.0` (toda a rede); para uso
-  local, trocar por `127.0.0.1`.
 - Sem teste automatizado do fluxo de transcrição (depende de modelo de 1,7 GB).
 
 ## Para estudar

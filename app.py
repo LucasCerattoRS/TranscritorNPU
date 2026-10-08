@@ -6,6 +6,7 @@ Aceita qualquer áudio ou vídeo que o ffmpeg leia (arquivo ou link via yt-dlp)
 e imagens (OCR via Tesseract).
 """
 
+import re
 import shutil
 import subprocess
 import sys
@@ -148,9 +149,17 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
 
 
 def _ts_srt(segundos: float) -> str:
-    h, resto = divmod(segundos, 3600)
-    m, s = divmod(resto, 60)
-    return f"{int(h):02d}:{int(m):02d}:{s:06.3f}".replace(".", ",")
+    # Arredonda pra milissegundos ANTES de quebrar em h/m/s; senão 59.9996 vira "00:00:60,000".
+    ms = round(segundos * 1000)
+    h, ms = divmod(ms, 3_600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _nome_seguro(nome: str) -> str:
+    """Título de vídeo vira nome de arquivo: troca o que o Windows proíbe (< > : " / barra invertida | ? * e caracteres de controle)."""
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", nome).strip(" .") or "transcricao"
 
 
 def gerar_srt(chunks) -> str:
@@ -170,7 +179,7 @@ def transcrever(arquivo, url, dispositivo, idioma_nome, progress=gr.Progress()):
         progress(0.02, desc="Resolvendo URL…")
         tmpdir = tempfile.TemporaryDirectory()
         arquivo, titulo = baixar_de_url(url.strip(), tmpdir.name, progress)
-        base = titulo[:60]
+        base = _nome_seguro(titulo[:60])
 
     try:
         progress(0.2, desc="Decodificando áudio…")

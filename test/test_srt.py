@@ -1,6 +1,6 @@
 """Testes das funções puras de SRT do app.py, SEM tocar no código do app.
 
-Estratégia: as dependências pesadas (gradio, openvino, fitz, pytesseract,
+Estratégia: as dependências pesadas (gradio, openvino, fitz, pytesseract, PIL,
 yt_dlp) não estão instaladas nesta máquina — e não precisam estar pra testar
 a formatação de legenda. Stubamos elas em sys.modules com MagicMock antes de
 importar `app`, então `_ts_srt`/`gerar_srt` testados são o código REAL.
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-for _mod in ("gradio", "openvino_genai", "fitz", "pytesseract", "yt_dlp"):
+for _mod in ("gradio", "openvino_genai", "fitz", "pytesseract", "yt_dlp", "PIL"):
     sys.modules.setdefault(_mod, MagicMock())
 
 import app  # noqa: E402  (import tardio de propósito, depois dos stubs)
@@ -40,6 +40,18 @@ def test_ts_srt_hours_overflow():
 
 def test_ts_srt_rounds_to_millis():
     assert app._ts_srt(3.1239) == "00:00:03,124"
+
+
+def test_ts_srt_rounding_never_gives_60_seconds():
+    # 59.9996 s arredonda pra 1 min cheio; antes saía "00:00:60,000" (SRT inválido)
+    assert app._ts_srt(59.9996) == "00:01:00,000"
+    assert app._ts_srt(3599.9999) == "01:00:00,000"
+
+
+def test_nome_seguro_remove_caracteres_proibidos_no_windows():
+    # título de vídeo vira nome de arquivo; ':' '?' '/' quebram write_text no Windows
+    assert app._nome_seguro('Live: "Ao vivo"? 1/2') == "Live_ _Ao vivo__ 1_2"
+    assert app._nome_seguro("   ") == "transcricao"
 
 
 class _Chunk:

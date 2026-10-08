@@ -67,5 +67,7 @@ async def chat_completions(request: ChatCompletionRequest):
     }
 
 if __name__ == "__main__":
-    # Roda o servidor na porta 8000
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Roda o servidor na porta 8000, só nesta máquina (o llm-council chama em localhost).
+    # Expor na rede é escolha explícita: HOST=0.0.0.0 python server.py
+    import os
+    uvicorn.run(app, host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8000")))

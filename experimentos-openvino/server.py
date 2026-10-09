@@ -1,3 +1,5 @@
+import sys
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -19,8 +21,8 @@ try:
     pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
     print("--- Modelo Carregado com Sucesso! ---")
 except Exception as e:
-    print(f"ERRO CRÍTICO: {e}")
-    exit()
+    print(f"ERRO CRÍTICO: {e}", file=sys.stderr)
+    sys.exit(1)
 
 # Modelos de dados para imitar a API da OpenAI (básico)
 class Message(BaseModel):

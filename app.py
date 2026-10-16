@@ -91,7 +91,10 @@ def carregar_audio(caminho: str) -> np.ndarray:
         "ffmpeg", "-v", "error", "-i", caminho,
         "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        raise gr.Error("ffmpeg não encontrado. Instale o ffmpeg e deixe-o no PATH (veja o README).")
     if proc.returncode != 0:
         raise gr.Error("ffmpeg não conseguiu ler o arquivo: " + proc.stderr.decode(errors="replace")[:500])
     audio = np.frombuffer(proc.stdout, dtype=np.float32)
@@ -164,7 +167,8 @@ def _nome_seguro(nome: str) -> str:
 
 def gerar_srt(chunks) -> str:
     blocos = []
-    for i, c in enumerate(chunks, 1):
+    # Trechos sem texto (silêncio) viram legenda vazia; ficam de fora e a numeração segue contínua.
+    for i, c in enumerate((c for c in chunks if c.text.strip()), 1):
         blocos.append(f"{i}\n{_ts_srt(c.start_ts)} --> {_ts_srt(c.end_ts)}\n{c.text.strip()}\n")
     return "\n".join(blocos)
 
@@ -175,13 +179,13 @@ def transcrever(arquivo, url, dispositivo, idioma_nome, progress=gr.Progress()):
 
     tmpdir = None
     base = None
-    if not arquivo and url:
-        progress(0.02, desc="Resolvendo URL…")
-        tmpdir = tempfile.TemporaryDirectory()
-        arquivo, titulo = baixar_de_url(url.strip(), tmpdir.name, progress)
-        base = _nome_seguro(titulo[:60])
-
     try:
+        if not arquivo and url:
+            progress(0.02, desc="Resolvendo URL…")
+            tmpdir = tempfile.TemporaryDirectory()
+            arquivo, titulo = baixar_de_url(url.strip(), tmpdir.name, progress)
+            base = _nome_seguro(titulo[:60])
+
         progress(0.2, desc="Decodificando áudio…")
         audio = carregar_audio(arquivo)
         duracao = audio.size / 16000

@@ -4,10 +4,10 @@
 - Método: testes com stubs (sem NPU, modelo, ffmpeg ou rede); cada achado tem teste que falhava antes.
 
 ## Achados corrigidos (`test/test_auditoria.py`)
-1. `app.py:62-70` — pasta `modelo/` ausente ou ilegível estourava erro cru do OpenVINO; agora `gr.Error` com instrução (e o dispositivo falho não entra no cache).
-2. `app.py:~158` — título `None` do yt-dlp quebrava com `TypeError` em `titulo[:60]`; agora cai em `audio_url`.
-3. `app.py:~248` — imagem corrompida/formato inesperado (OSError) vazava erro cru; agora `gr.Error`.
-4. `app.py:~268` — PDF corrompido/protegido vazava erro cru; agora `gr.Error`.
+1. `app.py:62-69` — pasta `modelo/` ausente ou ilegível estourava erro cru do OpenVINO; agora `gr.Error` com instrução (e o dispositivo falho não entra no cache).
+2. `app.py:156` — título `None` do yt-dlp quebrava com `TypeError` em `titulo[:60]`; agora cai em `audio_url`.
+3. `app.py:245-248` — imagem corrompida/formato inesperado (OSError) vazava erro cru; agora `gr.Error`.
+4. `app.py:271` — PDF corrompido/protegido vazava erro cru; agora `gr.Error`.
 
 ## Verificado, sem defeito reproduzido
 - Caminhos com espaço/acento: coberto por `test_nome_com_acento...` (passa).

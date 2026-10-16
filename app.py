@@ -61,7 +61,12 @@ _pipelines = {}
 
 def obter_pipeline(dispositivo: str) -> openvino_genai.WhisperPipeline:
     if dispositivo not in _pipelines:
-        _pipelines[dispositivo] = openvino_genai.WhisperPipeline(str(MODELO), dispositivo, CACHE_DIR=str(CACHE))
+        if not MODELO.is_dir():
+            raise gr.Error(f"Modelo não encontrado em {MODELO}. Baixe o OpenVINO/whisper-large-v3-turbo-int8-ov e coloque em modelo/ (veja o README).")
+        try:
+            _pipelines[dispositivo] = openvino_genai.WhisperPipeline(str(MODELO), dispositivo, CACHE_DIR=str(CACHE))
+        except Exception as e:
+            raise gr.Error(f"Não consegui carregar o modelo em {dispositivo}: {e}. Confira a pasta modelo/ ou tente outro dispositivo.")
     return _pipelines[dispositivo]
 
 
@@ -148,7 +153,7 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
             caminho = ydl.prepare_filename(info)
     except Exception as e:
         raise gr.Error(f"Não consegui baixar o áudio dessa URL: {e}")
-    return caminho, info.get("title", "audio_url")
+    return caminho, info.get("title") or "audio_url"
 
 
 def _ts_srt(segundos: float) -> str:
@@ -236,8 +241,11 @@ def transcrever_imagem(imagem, idioma_nome, progress=gr.Progress()):
 
     progress(0.3, desc="Lendo texto da imagem (OCR)…")
     codigo = IDIOMAS_OCR.get(idioma_nome, "por")
-    with Image.open(imagem) as img:
-        texto = pytesseract.image_to_string(img, lang=codigo).strip()
+    try:
+        with Image.open(imagem) as img:
+            texto = pytesseract.image_to_string(img, lang=codigo).strip()
+    except OSError as e:
+        raise gr.Error(f"Não consegui ler a imagem (arquivo corrompido ou formato inesperado): {e}")
 
     if not texto:
         raise gr.Error("Nenhum texto foi encontrado na imagem.")
@@ -259,7 +267,11 @@ def transcrever_pdf(pdf, idioma_nome, progress=gr.Progress()):
 
     codigo = IDIOMAS_OCR.get(idioma_nome, "por")
     partes = []
-    with fitz.open(pdf) as doc:
+    try:
+        doc = fitz.open(pdf)
+    except Exception as e:
+        raise gr.Error(f"Não consegui abrir o PDF (arquivo corrompido ou protegido): {e}")
+    with doc:
         total = doc.page_count
         for i, pagina in enumerate(doc):
             progress((i + 1) / total, desc=f"Página {i + 1}/{total}")

@@ -14,6 +14,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 import fitz  # PyMuPDF
 import numpy as np
@@ -211,7 +212,7 @@ def transcrever(arquivo, url, dispositivo, idioma_nome, progress=gr.Progress()):
         tempo = time.time() - inicio
 
         texto = str(resultado).strip()
-        carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid4().hex
         if base is None:
             base = Path(arquivo).stem[:60]
 
@@ -250,7 +251,7 @@ def transcrever_imagem(imagem, idioma_nome, progress=gr.Progress()):
     if not texto:
         raise gr.Error("Nenhum texto foi encontrado na imagem.")
 
-    carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid4().hex
     base = Path(imagem).stem[:60]
     arq_txt = SAIDAS / f"{base}_ocr_{carimbo}.txt"
     arq_txt.write_text(texto, encoding="utf-8")
@@ -286,7 +287,7 @@ def transcrever_pdf(pdf, idioma_nome, progress=gr.Progress()):
     if not texto:
         raise gr.Error("Nenhum texto foi encontrado no PDF.")
 
-    carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid4().hex
     base = Path(pdf).stem[:60]
     arq_txt = SAIDAS / f"{base}_{carimbo}.txt"
     arq_txt.write_text(texto, encoding="utf-8")

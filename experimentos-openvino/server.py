@@ -1,4 +1,5 @@
 import sys
+import time
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -57,7 +58,7 @@ async def chat_completions(request: ChatCompletionRequest):
     return {
         "id": "chatcmpl-local",
         "object": "chat.completion",
-        "created": 1677652288,
+        "created": int(time.time()),
         "choices": [{
             "index": 0,
             "message": {

@@ -78,3 +78,19 @@ def test_resposta_preserva_marcador_literal_gerado_pelo_modelo(monkeypatch, caps
         assert resposta["choices"][0]["message"]["content"] == complemento
     else:
         assert capsys.readouterr().out.splitlines()[-1] == complemento
+
+
+def test_created_reflete_o_instante_da_resposta(monkeypatch):
+    import asyncio
+    import time
+
+    _instala_stubs(monkeypatch, lambda *a, **k: object())
+    sys.modules["transformers"].AutoTokenizer.from_pretrained = lambda *a, **k: types.SimpleNamespace(
+        apply_chat_template=lambda *a, **k: "pergunta"
+    )
+    sys.modules["transformers"].pipeline = lambda *a, **k: lambda *a, **k: [{"generated_text": "resposta"}]
+    monkeypatch.setattr(time, "time", lambda: 2_000_000_000.75)
+    ns = runpy.run_path(str(SERVER), run_name="server")
+    request = types.SimpleNamespace(messages=[], max_tokens=50, temperature=0.7)
+    resposta = asyncio.run(ns["chat_completions"](request))
+    assert resposta["created"] == 2_000_000_000

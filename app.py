@@ -172,7 +172,9 @@ def _ts_srt(segundos: float) -> str:
 
 def _nome_seguro(nome: str) -> str:
     """Título de vídeo vira nome de arquivo: troca o que o Windows proíbe (< > : " / barra invertida | ? * e caracteres de controle)."""
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", nome).strip(" .") or "transcricao"
+    nome = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", nome)
+    # Reserva espaço para o carimbo, identificador e extensão no limite de 255 bytes.
+    return nome.encode("utf-8")[:180].decode("utf-8", errors="ignore").strip(" .") or "transcricao"
 
 
 def gerar_srt(chunks) -> str:
@@ -218,7 +220,7 @@ def transcrever(arquivo, url, dispositivo, idioma_nome, progress=gr.Progress()):
         texto = str(resultado).strip()
         carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid4().hex
         if base is None:
-            base = Path(arquivo).stem[:60]
+            base = _nome_seguro(Path(arquivo).stem[:60])
 
         arq_txt = SAIDAS / f"{base}_{carimbo}.txt"
         arq_txt.write_text(texto, encoding="utf-8")
@@ -256,7 +258,7 @@ def transcrever_imagem(imagem, idioma_nome, progress=gr.Progress()):
         raise gr.Error("Nenhum texto foi encontrado na imagem.")
 
     carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid4().hex
-    base = Path(imagem).stem[:60]
+    base = _nome_seguro(Path(imagem).stem[:60])
     arq_txt = SAIDAS / f"{base}_ocr_{carimbo}.txt"
     arq_txt.write_text(texto, encoding="utf-8")
 
@@ -292,7 +294,7 @@ def transcrever_pdf(pdf, idioma_nome, progress=gr.Progress()):
         raise gr.Error("Nenhum texto foi encontrado no PDF.")
 
     carimbo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid4().hex
-    base = Path(pdf).stem[:60]
+    base = _nome_seguro(Path(pdf).stem[:60])
     arq_txt = SAIDAS / f"{base}_{carimbo}.txt"
     arq_txt.write_text(texto, encoding="utf-8")
 

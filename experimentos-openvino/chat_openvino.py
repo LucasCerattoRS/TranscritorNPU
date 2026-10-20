@@ -32,7 +32,7 @@ formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_g
 # 4. Gerar a resposta
 print(f"\n--- Gerando resposta para: '{prompt}' ---\n")
 # max_new_tokens limita o tamanho da resposta para ser rápido
-outputs = pipe(formatted_prompt, max_new_tokens=300, do_sample=True, temperature=0.7)
+outputs = pipe(formatted_prompt, max_new_tokens=300, return_full_text=False, do_sample=True, temperature=0.7)
 
 # Limpar a saída
-print(outputs[0]["generated_text"].split("<|assistant|>")[-1].strip())
+print(outputs[0]["generated_text"].strip())

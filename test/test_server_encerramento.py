@@ -54,3 +54,27 @@ def test_carga_ok_nao_encerra_e_expoe_app(monkeypatch):
     _instala_stubs(monkeypatch, lambda *a, **k: object())
     ns = runpy.run_path(str(SERVER), run_name="server")
     assert "app" in ns and "pipe" in ns
+
+
+@pytest.mark.parametrize("alvo", ["server.py", "chat_openvino.py"])
+def test_resposta_preserva_marcador_literal_gerado_pelo_modelo(monkeypatch, capsys, alvo):
+    import asyncio
+
+    _instala_stubs(monkeypatch, lambda *a, **k: object())
+    complemento = 'O marcador <|assistant|> pode aparecer numa explicação.'
+
+    def gerar(prompt, return_full_text=True, **kwargs):
+        texto = prompt + complemento if return_full_text else complemento
+        return [{"generated_text": texto}]
+
+    sys.modules["transformers"].AutoTokenizer.from_pretrained = lambda *a, **k: types.SimpleNamespace(
+        apply_chat_template=lambda *a, **k: '<|user|>Explique<|assistant|>'
+    )
+    sys.modules["transformers"].pipeline = lambda *a, **k: gerar
+    ns = runpy.run_path(str(SERVER.with_name(alvo)), run_name="experimento")
+    if alvo == "server.py":
+        request = types.SimpleNamespace(messages=[], max_tokens=50, temperature=0.7)
+        resposta = asyncio.run(ns["chat_completions"](request))
+        assert resposta["choices"][0]["message"]["content"] == complemento
+    else:
+        assert capsys.readouterr().out.splitlines()[-1] == complemento

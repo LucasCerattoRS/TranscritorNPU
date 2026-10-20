@@ -11,8 +11,9 @@ import pytest
 import app
 
 
-@pytest.mark.parametrize("origem", ["audio", "imagem", "pdf"])
-def test_extracoes_no_mesmo_segundo_preservam_os_dois_resultados(tmp_path, monkeypatch, origem):
+@pytest.mark.parametrize("origem", ["audio", "url", "imagem", "pdf"])
+@pytest.mark.parametrize("nome", ["entrada", "🎵" * 60], ids=["curto", "unicode_longo"])
+def test_extracoes_no_mesmo_segundo_preservam_os_dois_resultados(tmp_path, monkeypatch, origem, nome):
     class RelogioFixo:
         @staticmethod
         def now():
@@ -22,7 +23,7 @@ def test_extracoes_no_mesmo_segundo_preservam_os_dois_resultados(tmp_path, monke
     monkeypatch.setattr(app, "SAIDAS", tmp_path)
     textos = iter(["primeira extração", "segunda extração"])
 
-    if origem == "audio":
+    if origem in ("audio", "url"):
         class Resultado:
             chunks = [SimpleNamespace(start_ts=0, end_ts=1, text="legenda")]
 
@@ -34,20 +35,25 @@ def test_extracoes_no_mesmo_segundo_preservam_os_dois_resultados(tmp_path, monke
         monkeypatch.setattr(app, "obter_pipeline", lambda *a: pipe)
         monkeypatch.setattr(app, "carregar_audio", lambda *a: np.zeros(16000))
 
+        monkeypatch.setattr(app, "baixar_de_url", lambda *a: ("baixado.wav", nome))
+
         def extrair():
-            texto, caminhos, _ = app.transcrever("entrada.wav", "", "CPU", "Português")
+            if origem == "url":
+                texto, caminhos, _ = app.transcrever(None, "https://exemplo.invalid", "CPU", "Português")
+            else:
+                texto, caminhos, _ = app.transcrever(f"{nome}.wav", "", "CPU", "Português")
             return texto, list(map(Path, caminhos))
     else:
         if origem == "imagem":
             monkeypatch.setattr(app.Image, "open", lambda *a: MagicMock())
             monkeypatch.setattr(app.pytesseract, "image_to_string", lambda *a, **k: next(textos))
-            funcao, entrada = app.transcrever_imagem, "entrada.png"
+            funcao, entrada = app.transcrever_imagem, f"{nome}.png"
         else:
             doc = MagicMock()
             doc.page_count = 1
             doc.__iter__.side_effect = lambda: iter([SimpleNamespace(get_text=lambda: next(textos))])
             monkeypatch.setattr(app.fitz, "open", lambda *a: doc)
-            funcao, entrada = app.transcrever_pdf, "entrada.pdf"
+            funcao, entrada = app.transcrever_pdf, f"{nome}.pdf"
 
         def extrair():
             texto, caminho = funcao(entrada, "Português")

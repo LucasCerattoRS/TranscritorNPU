@@ -14,6 +14,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from uuid import uuid4
 
 import fitz  # PyMuPDF
@@ -58,21 +59,24 @@ IDIOMAS_OCR = {
 
 # Pipelines já carregados, um por dispositivo (carregar na NPU leva ~1 min na primeira vez)
 _pipelines = {}
+_pipeline_lock = Lock()
 
 
 def obter_pipeline(dispositivo: str) -> openvino_genai.WhisperPipeline:
-    if dispositivo not in _pipelines:
-        if not MODELO.is_dir():
-            raise gr.Error(f"Modelo não encontrado em {MODELO}. Baixe o OpenVINO/whisper-large-v3-turbo-int8-ov e coloque em modelo/ (veja o README).")
-        try:
-            _pipelines[dispositivo] = openvino_genai.WhisperPipeline(str(MODELO), dispositivo, CACHE_DIR=str(CACHE))
-        except Exception as e:
-            raise gr.Error(f"Não consegui carregar o modelo em {dispositivo}: {e}. Confira a pasta modelo/ ou tente outro dispositivo.")
-    return _pipelines[dispositivo]
+    with _pipeline_lock:
+        if dispositivo not in _pipelines:
+            if not MODELO.is_dir():
+                raise gr.Error(f"Modelo não encontrado em {MODELO}. Baixe o OpenVINO/whisper-large-v3-turbo-int8-ov e coloque em modelo/ (veja o README).")
+            try:
+                _pipelines[dispositivo] = openvino_genai.WhisperPipeline(str(MODELO), dispositivo, CACHE_DIR=str(CACHE))
+            except Exception as e:
+                raise gr.Error(f"Não consegui carregar o modelo em {dispositivo}: {e}. Confira a pasta modelo/ ou tente outro dispositivo.")
+        return _pipelines[dispositivo]
 
 
 def invalidar_pipeline(dispositivo: str) -> None:
-    _pipelines.pop(dispositivo, None)
+    with _pipeline_lock:
+        _pipelines.pop(dispositivo, None)
 
 
 def _gerar_com_retry(dispositivo: str, audio: np.ndarray, config):

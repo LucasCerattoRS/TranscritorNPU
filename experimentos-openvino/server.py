@@ -46,11 +46,12 @@ async def chat_completions(request: ChatCompletionRequest):
     outputs = pipe(
         formatted_prompt, 
         max_new_tokens=request.max_tokens, 
+        return_full_text=False,
         do_sample=True, 
         temperature=request.temperature
     )
     
-    generated_text = outputs[0]["generated_text"].split("<|assistant|>")[-1].strip()
+    generated_text = outputs[0]["generated_text"].strip()
 
     # 3. Retornar no formato JSON que ferramentas de IA esperam
     return {

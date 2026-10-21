@@ -72,3 +72,8 @@ def test_gerar_srt_empty():
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_nome_seguro_aceita_nome_linux_com_byte_nao_utf8():
+    nome = os.fsdecode(b"entrevista_\xe9.wav")  # surrogateescape, como o Gradio entrega
+    assert app._nome_seguro(nome) == "entrevista__.wav"

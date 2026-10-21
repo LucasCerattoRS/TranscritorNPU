@@ -1,3 +1,5 @@
+import sys
+
 from optimum.intel.openvino import OVModelForCausalLM
 from transformers import AutoTokenizer, pipeline
 
@@ -14,8 +16,8 @@ try:
     model = OVModelForCausalLM.from_pretrained(model_id, device=DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(model_id)
 except Exception as e:
-    print(f"Erro ao carregar modelo: {e}")
-    exit()
+    print(f"Erro ao carregar modelo: {e}", file=sys.stderr)
+    sys.exit(1)
 
 # 2. Criar o Pipeline de Texto
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)

@@ -39,13 +39,14 @@ def _instala_stubs(monkeypatch, from_pretrained):
           pipeline=lambda *a, **k: object())
 
 
-def test_falha_ao_carregar_modelo_sai_com_codigo_diferente_de_zero(monkeypatch, capsys):
+@pytest.mark.parametrize("alvo", ["server.py", "chat_openvino.py"])
+def test_falha_ao_carregar_modelo_sai_com_codigo_diferente_de_zero(monkeypatch, capsys, alvo):
     def falha(*a, **k):
         raise RuntimeError("sem GPU")
 
     _instala_stubs(monkeypatch, falha)
     with pytest.raises(SystemExit) as exc:
-        runpy.run_path(str(SERVER), run_name="server")
+        runpy.run_path(str(SERVER.with_name(alvo)), run_name="experimento")
     assert exc.value.code not in (None, 0)
     assert "sem GPU" in capsys.readouterr().err
 

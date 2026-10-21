@@ -172,6 +172,8 @@ def _ts_srt(segundos: float) -> str:
 
 def _nome_seguro(nome: str) -> str:
     """Título de vídeo vira nome de arquivo: troca o que o Windows proíbe (< > : " / barra invertida | ? * e caracteres de controle)."""
+    # Nome de arquivo Linux com byte não UTF-8 chega com surrogateescape (b"\xe9" vira "\udce9") e quebraria o encode abaixo.
+    nome = nome.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace").replace("\ufffd", "_")
     nome = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", nome)
     # Reserva espaço para o carimbo, identificador e extensão no limite de 255 bytes.
     return nome.encode("utf-8")[:180].decode("utf-8", errors="ignore").strip(" .") or "transcricao"

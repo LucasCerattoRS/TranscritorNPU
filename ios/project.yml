@@ -34,6 +34,8 @@ targets:
       path: Transcritor/Info.plist
       properties:
         CFBundleDisplayName: Transcritor
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         # Vídeos e transcrições ficam visíveis no app Arquivos.

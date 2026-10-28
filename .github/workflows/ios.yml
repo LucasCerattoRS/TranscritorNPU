@@ -1,0 +1,59 @@
+# App iOS: testa o núcleo no Linux e compila o .ipa sem assinatura num Mac do GitHub.
+# A cada push, o .ipa vai para a release "ios-dev"; o SideStore assina no iPhone.
+name: ios
+on:
+  push:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  nucleo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test --package-path ios/Nucleo
+  ipa:
+    needs: nucleo
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: brew install xcodegen
+      - run: xcodegen generate --spec ios/project.yml
+      - name: Compilar sem assinatura
+        run: |
+          xcodebuild build \
+            -project ios/Transcritor.xcodeproj -scheme Transcritor \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+      - name: Empacotar .ipa
+        run: |
+          mkdir -p Payload
+          cp -R ios/build/Build/Products/Release-iphoneos/Transcritor.app Payload/
+          zip -qry Transcritor.ipa Payload
+          ls -lh Transcritor.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Transcritor-ipa
+          path: Transcritor.ipa
+      - name: Publicar na release ios-dev
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-dev --cleanup-tag --yes || true
+          gh release create ios-dev Transcritor.ipa --prerelease --target "$GITHUB_SHA" \
+            --title "Transcritor iOS (teste)" \
+            --notes "Build de teste de ${GITHUB_REF_NAME} (${GITHUB_SHA::7}), sem assinatura. Instale pelo SideStore: veja ios/README.md."

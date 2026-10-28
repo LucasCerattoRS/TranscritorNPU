@@ -13,7 +13,8 @@ precisar baixar o arquivo manualmente antes.
 
 ## Estado
 
-Em uso pessoal no Windows (Core Ultra 5 125H). Port pro Linux adaptado mas **não
+Em uso pessoal no Windows (Core Ultra 5 125H). Há uma versão para iPhone em `ios/`
+(primeira versão, ainda não testada no aparelho). Port pro Linux adaptado mas **não
 validado** no Fedora (ver `LINUX.md`). Testes automáticos (stubs) cobrem legenda, nomes de arquivo, o fluxo
 de transcrição, limpeza de temporários e erros do ffmpeg — transcrição real exige o modelo e o hardware.
 
@@ -107,6 +108,7 @@ CPU é a mais lenta, mas sempre disponível.
 | `test/conftest.py` | Stubs das dependências pesadas para os testes. |
 | `Iniciar Transcritor.bat` / `iniciar.sh` | Atalhos de inicialização (Windows / Linux). |
 | `LINUX.md` | Roteiro do port pro Fedora (driver `intel_vpu`, dependências). |
+| `ios/` | App para iPhone (SwiftUI + WhisperKit): baixa Reels do Instagram e transcreve no aparelho. Instalação e uso em `ios/README.md`. |
 | `experimentos-openvino/` | Scripts soltos de estudo (ResNet, Phi-3 por CLI e por HTTP). Não fazem parte do app. |
 | `docs/estudo/ROTEIRO.md` | Roteiro de estudo do projeto. |
 | `modelo/`, `cache/`, `saidas/` | Criados localmente; fora do git. |

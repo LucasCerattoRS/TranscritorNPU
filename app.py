@@ -67,10 +67,20 @@ def obter_pipeline(dispositivo: str) -> openvino_genai.WhisperPipeline:
         if dispositivo not in _pipelines:
             if not MODELO.is_dir():
                 raise gr.Error(f"Modelo não encontrado em {MODELO}. Baixe o OpenVINO/whisper-large-v3-turbo-int8-ov e coloque em modelo/ (veja o README).")
-            try:
-                _pipelines[dispositivo] = openvino_genai.WhisperPipeline(str(MODELO), dispositivo, CACHE_DIR=str(CACHE))
-            except Exception as e:
-                raise gr.Error(f"Não consegui carregar o modelo em {dispositivo}: {e}. Confira a pasta modelo/ ou tente outro dispositivo.")
+            # Se a NPU/GPU não carregar (driver ausente, p.ex. Linux sem intel-npu-driver),
+            # cai sozinho para o próximo dispositivo em vez de falhar a transcrição.
+            ordem = {"NPU": ["NPU", "GPU", "CPU"], "GPU": ["GPU", "CPU"]}.get(dispositivo, [dispositivo])
+            ultimo = None
+            for d in ordem:
+                try:
+                    _pipelines[dispositivo] = openvino_genai.WhisperPipeline(str(MODELO), d, CACHE_DIR=str(CACHE))
+                    if d != dispositivo:
+                        print(f"[aviso] {dispositivo} indisponível ({str(ultimo).splitlines()[0][:80]}); usando {d}")
+                    break
+                except Exception as e:
+                    ultimo = e
+            else:
+                raise gr.Error(f"Não consegui carregar o modelo em {dispositivo}: {ultimo}. Confira a pasta modelo/ ou tente outro dispositivo.")
         return _pipelines[dispositivo]
 
 
@@ -131,6 +141,8 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
         # YouTube exige resolver desafios JS pra liberar os formatos completos;
         # usa o Node.js já instalado na máquina em vez do runtime Deno padrão do yt-dlp.
         "js_runtimes": {"node": {}},
+        # yt-dlp novo baixa o solver dos desafios (ejs) do GitHub; sem isso o YouTube devolve 403.
+        "remote_components": ["ejs:github"],
     }
 
     # Instagram (e outros sites logados) exigem sessão autenticada. Ordem de preferência:

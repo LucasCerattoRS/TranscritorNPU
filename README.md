@@ -96,6 +96,10 @@ Na aba **PDF → Texto**: envie um PDF e clique em Extrair texto. Cada página t
 extrair o texto nativo primeiro (grátis, instantâneo); páginas sem camada de texto
 (PDF escaneado) caem automaticamente para OCR a 300dpi. Gera `.txt` em `saidas/`.
 
+Na aba de áudio/vídeo há também a seção **Arremessar na cesta (opcional)**: solte o arquivo, puxe para trás e
+jogue na cesta (ou Enter); ele cai no mesmo campo de arquivo. Os arquivos ficam em `estatico/` e o app abre
+normalmente sem eles.
+
 Ctrl+V funciona nas abas de áudio/vídeo e imagem: um script injetado na página
 intercepta o evento de colar do navegador e entrega o arquivo pro componente ativo
 (ver `COLAR_JS` em `app.py`) — não é um recurso nativo do Gradio para upload de

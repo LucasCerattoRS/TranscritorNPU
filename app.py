@@ -6,6 +6,7 @@ Aceita qualquer áudio ou vídeo que o ffmpeg leia (arquivo ou link via yt-dlp)
 e imagens (OCR via Tesseract).
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -439,6 +440,56 @@ window.addEventListener('paste', (e) => {
 </script>
 """
 
+# Cesta de arremesso (estatico/cesta-dropzone.*, projeto próprio do Lukas): zona de upload
+# opcional na aba Áudio / Vídeo. O arquivo que cai na cesta é entregue ao MESMO <input type=file>
+# do componente "entrada" (id entrada-midia), então o resto do fluxo não muda. Sem os arquivos em
+# estatico/, o app abre normalmente sem a cesta.
+_ESTATICO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "estatico")
+
+
+def montar_head(pasta=_ESTATICO):
+    """Devolve o <head> extra: colar (Ctrl+V) e, se os arquivos existirem, a cesta."""
+    try:
+        with open(os.path.join(pasta, "cesta-dropzone.css"), encoding="utf-8") as f:
+            css = f.read()
+        with open(os.path.join(pasta, "cesta-dropzone.js"), encoding="utf-8") as f:
+            js = f.read()
+    except OSError:
+        return COLAR_JS
+    if "</script" in js.lower() or "</style" in css.lower():
+        return COLAR_JS
+    return COLAR_JS + "<style>" + css + "</style><script>" + js + "</script>" + CESTA_INIT_JS
+
+
+CESTA_INIT_JS = """
+<script>
+(function () {
+  function entregar(arquivo) {
+    const alvo = document.querySelector('#entrada-midia input[type=file]');
+    if (!alvo) return Promise.reject(new Error('campo de arquivo não encontrado'));
+    const dt = new DataTransfer();
+    dt.items.add(arquivo);
+    alvo.files = dt.files;
+    alvo.dispatchEvent(new Event('change', { bubbles: true }));
+    return Promise.resolve();
+  }
+  function montar() {
+    const raiz = document.getElementById('cesta-midia');
+    if (!raiz || raiz.dataset.pronta || !window.CestaDropzone) return;
+    raiz.dataset.pronta = '1';
+    new window.CestaDropzone(raiz, {
+      titulo: 'Arremesse na cesta',
+      sub: 'Opcional: solte o áudio ou vídeo aqui e jogue na cesta. Depois clique em Transcrever.',
+      aceitar: 'audio/*,video/*', multiplos: false,
+      upload: (arquivo, progresso) => entregar(arquivo).then(() => { if (progresso) progresso(1); }),
+    });
+  }
+  new MutationObserver(montar).observe(document.documentElement, { childList: true, subtree: true });
+  window.addEventListener('load', montar);
+})();
+</script>
+"""
+
 with gr.Blocks(title="Mídia e transcrição") as app:
     gr.Markdown("# Mídia e transcrição\nBaixe vídeos e transcreva arquivos na mesma tela. Downloads precisam de internet; transcrição e OCR usam os recursos instalados no computador.")
 
@@ -449,7 +500,10 @@ with gr.Blocks(title="Mídia e transcrição") as app:
                     label="Áudio ou vídeo (arquivo, arraste ou Ctrl+V)",
                     file_types=["audio", "video"],
                     type="filepath",
+                    elem_id="entrada-midia",
                 )
+                with gr.Accordion("Arremessar na cesta (opcional)", open=False):
+                    gr.HTML('<div id="cesta-midia"></div>')
                 url = gr.Textbox(label="…ou cole um link (só o áudio é usado; para guardar a mídia, use a aba Baixar)", placeholder="https://")
                 dispositivo = gr.Dropdown(["NPU", "GPU", "CPU"], value="NPU", label="Dispositivo")
                 idioma = gr.Dropdown(list(IDIOMAS), value="Português", label="Idioma")
@@ -510,4 +564,4 @@ with gr.Blocks(title="Mídia e transcrição") as app:
         botao_pdf.click(transcrever_pdf, [pdf, idioma_pdf], [texto_pdf, download_pdf])
 
 if __name__ == "__main__":
-    app.launch(server_name="127.0.0.1", inbrowser=True, head=COLAR_JS)
+    app.launch(server_name="127.0.0.1", inbrowser=True, head=montar_head())

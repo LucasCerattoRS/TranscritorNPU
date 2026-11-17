@@ -6,6 +6,7 @@ Aceita qualquer áudio ou vídeo que o ffmpeg leia (arquivo ou link via yt-dlp)
 e imagens (OCR via Tesseract).
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -24,6 +25,9 @@ import openvino_genai
 import pytesseract
 import yt_dlp
 from PIL import Image
+
+import downloader
+import historico
 
 PASTA = Path(__file__).parent
 MODELO = PASTA / "modelo"
@@ -123,36 +127,24 @@ def carregar_audio(caminho: str) -> np.ndarray:
     return audio
 
 
-def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str, str]:
-    """Baixa só a faixa de áudio de uma URL (YouTube etc.) via yt-dlp, sem baixar o vídeo inteiro."""
-
-    def avisar(d):
-        if d["status"] == "downloading":
-            pct = d.get("_percent_str", "").strip()
-            progress(0.1, desc=f"Baixando áudio da URL… {pct}")
-
+def _opcoes_yt_dlp() -> dict:
+    """Opções comuns de rede/login do yt-dlp (YouTube + Instagram), usadas por todo download."""
     opcoes = {
-        "format": "bestaudio/best",
-        "outtmpl": str(Path(pasta_tmp) / "%(id)s.%(ext)s"),
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "progress_hooks": [avisar],
         # YouTube exige resolver desafios JS pra liberar os formatos completos;
         # usa o Node.js já instalado na máquina em vez do runtime Deno padrão do yt-dlp.
         "js_runtimes": {"node": {}},
         # yt-dlp novo baixa o solver dos desafios (ejs) do GitHub; sem isso o YouTube devolve 403.
         "remote_components": ["ejs:github"],
     }
-
     # Instagram (e outros sites logados) exigem sessão autenticada. Ordem de preferência:
     #  1) cookies.txt (formato Netscape) ao lado do app.py — rota mais confiável no
     #     Windows: funciona com o Brave aberto e mesmo com App-Bound Encryption, pois a
     #     exportação acontece dentro do navegador já logado (via extensão "Get cookies.txt").
+    #     Está no .gitignore: é uma sessão logada, nunca vai pro git.
     #  2) cookiesfrombrowser("brave") — só funciona com o Brave FECHADO e sem ABE.
     #  3) sem cookies — YouTube e URLs sem login seguem funcionando; conteúdo de IG
     #     que exige sessão vai falhar com "empty media response".
-    cookies_txt = Path(__file__).with_name("cookies.txt")
+    cookies_txt = PASTA / "cookies.txt"
     if cookies_txt.exists():
         opcoes["cookiefile"] = str(cookies_txt)
         print(f"[cookies] usando {cookies_txt.name}")
@@ -163,14 +155,127 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
             print("[cookies] Brave OK")
         except Exception as e:
             print(f"[aviso] sem cookies (Brave indisponível), seguindo sem login: {e}")
+    return opcoes
+
+
+def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str, str]:
+    """Baixa só a faixa de áudio de uma URL (YouTube etc.) via yt-dlp, sem baixar o vídeo inteiro.
+    Usado pelo "Transcrever" quando só há link; descartável depois (pasta temporária)."""
+
+    url = downloader.validar_url(url)
+    if not url:
+        raise gr.Error("Cole um link HTTP ou HTTPS válido.")
+
+    def avisar(d):
+        if d["status"] == "downloading":
+            pct = d.get("_percent_str", "").strip()
+            progress(0.1, desc=f"Baixando áudio da URL… {pct}")
+
+    opcoes = {
+        "format": "bestaudio/best",
+        "outtmpl": str(Path(pasta_tmp).as_posix().replace("%", "%%") + "/%(id).64B.%(ext)s"),
+        "windowsfilenames": True,
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "progress_hooks": [avisar],
+        **_opcoes_yt_dlp(),
+    }
 
     try:
         with yt_dlp.YoutubeDL(opcoes) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = downloader.extrair_um_video(ydl, url)
             caminho = ydl.prepare_filename(info)
+    except downloader.DownloadFailed as e:
+        raise gr.Error(str(e))
+    except gr.Error:
+        raise
     except Exception as e:
-        raise gr.Error(f"Não consegui baixar o áudio dessa URL: {e}")
+        raise gr.Error(f"Não consegui baixar essa URL: {e}")
     return caminho, info.get("title") or "audio_url"
+
+
+MODOS_DOWNLOAD = ["Vídeo", "Só áudio (MP3)"]
+QUALIDADES = ["360p", "720p", "1080p", "Melhor"]
+PASTA_DOWNLOADS = SAIDAS / "downloads"
+
+
+def baixar_midia(url, modo, qualidade, pasta, progress=gr.Progress()):
+    """Baixa vídeo (mp4) ou áudio (mp3) para a pasta escolhida e registra no histórico.
+    Retorna (caminho do arquivo, título). A mídia fica no disco mesmo se a transcrição
+    posterior falhar. Levanta gr.Error com mensagem amigável."""
+    limpa = downloader.validar_url(url)
+    if not limpa:
+        raise gr.Error("Cole um link HTTP ou HTTPS válido.")
+    if modo not in MODOS_DOWNLOAD:
+        raise gr.Error("Escolha vídeo ou só áudio.")
+    audio = modo != "Vídeo"
+    pasta = downloader.normalizar_pasta(pasta) if (pasta or "").strip() else str(PASTA_DOWNLOADS)
+    registro = {"id": uuid4().hex, "url": limpa, "modo": modo, "qualidade": "" if audio else qualidade,
+                "pasta": pasta, "quando": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "status": "downloading", "titulo": "", "arquivo": "", "error": ""}
+    _registrar(registro)
+
+    def avisar(d):
+        if d.get("status") == "downloading":
+            progress(0.1, desc=f"Baixando… {str(d.get('_percent_str', '')).strip()}")
+
+    try:
+        progress(0.02, desc="Resolvendo link…")
+        titulo, caminho = downloader.run_download(
+            limpa, qualidade, audio, False, pasta, avisar, extra_opts=_opcoes_yt_dlp())
+        if not caminho or not Path(caminho).is_file():
+            raise downloader.DownloadFailed("O download terminou, mas não achei o arquivo final.")
+    except downloader.DownloadFailed as e:
+        registro.update(status="error", error=str(e))
+        _registrar(registro)
+        raise gr.Error(str(e))
+    registro.update(status="ok", titulo=titulo, arquivo=caminho)
+    _registrar(registro)
+    return caminho, titulo
+
+
+_hist_lock = Lock()
+
+
+def _registrar(registro: dict) -> None:
+    """Insere/atualiza o registro (por id) no histórico em disco. Falha de disco não derruba o download."""
+    with _hist_lock:
+        try:
+            caminho = historico.caminho_padrao()
+            itens = [i for i in historico.carregar(caminho) if i.get("id") != registro["id"]]
+            historico.salvar(caminho, [dict(registro)] + itens)
+        except OSError as e:
+            print(f"[aviso] não consegui gravar o histórico: {e}")
+
+
+def tabela_historico():
+    with _hist_lock:
+        itens = historico.carregar(historico.caminho_padrao())
+    return [[i.get("quando", ""), i.get("titulo") or i.get("url", ""), i.get("modo", ""),
+             i.get("status", ""), i.get("arquivo") or i.get("error", "")] for i in itens]
+
+
+def baixar(url, modo, qualidade, pasta, progress=gr.Progress()):
+    """Aba Baixar: só baixa."""
+    caminho, titulo = baixar_midia(url, modo, qualidade, pasta, progress)
+    return f"Salvo: {titulo}\n{caminho}", tabela_historico()
+
+
+def baixar_e_transcrever(url, modo, qualidade, pasta, dispositivo, idioma, progress=gr.Progress()):
+    """Um clique: baixa e transcreve. Se a transcrição falhar, a mídia baixada continua no disco
+    e o erro vira aviso (não perde o download)."""
+    try:
+        caminho, titulo = baixar_midia(url, modo, qualidade, pasta, progress)
+    except gr.Error as e:
+        return "", None, f"Falha no download: {e}", tabela_historico()
+    try:
+        texto, arquivos, info = transcrever(caminho, "", dispositivo, idioma, progress)
+    except Exception as e:
+        msg = getattr(e, "message", None) or str(e)
+        return "", None, (f"A transcrição falhou ({msg}), mas a mídia foi salva em: {caminho}. "
+                          "Use a aba Áudio / Vídeo para tentar de novo."), tabela_historico()
+    return texto, arquivos, f"Mídia salva em: {caminho}\n\n{info}", tabela_historico()
 
 
 def _ts_srt(segundos: float) -> str:
@@ -335,8 +440,58 @@ window.addEventListener('paste', (e) => {
 </script>
 """
 
-with gr.Blocks(title="Transcritor NPU") as app:
-    gr.Markdown("# 🎙️ Transcritor NPU\nWhisper large-v3-turbo e OCR rodando localmente no seu Intel Core Ultra.")
+# Cesta de arremesso (estatico/cesta-dropzone.*, projeto próprio do Lukas): zona de upload
+# opcional na aba Áudio / Vídeo. O arquivo que cai na cesta é entregue ao MESMO <input type=file>
+# do componente "entrada" (id entrada-midia), então o resto do fluxo não muda. Sem os arquivos em
+# estatico/, o app abre normalmente sem a cesta.
+_ESTATICO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "estatico")
+
+
+def montar_head(pasta=_ESTATICO):
+    """Devolve o <head> extra: colar (Ctrl+V) e, se os arquivos existirem, a cesta."""
+    try:
+        with open(os.path.join(pasta, "cesta-dropzone.css"), encoding="utf-8") as f:
+            css = f.read()
+        with open(os.path.join(pasta, "cesta-dropzone.js"), encoding="utf-8") as f:
+            js = f.read()
+    except OSError:
+        return COLAR_JS
+    if "</script" in js.lower() or "</style" in css.lower():
+        return COLAR_JS
+    return COLAR_JS + "<style>" + css + "</style><script>" + js + "</script>" + CESTA_INIT_JS
+
+
+CESTA_INIT_JS = """
+<script>
+(function () {
+  function entregar(arquivo) {
+    const alvo = document.querySelector('#entrada-midia input[type=file]');
+    if (!alvo) return Promise.reject(new Error('campo de arquivo não encontrado'));
+    const dt = new DataTransfer();
+    dt.items.add(arquivo);
+    alvo.files = dt.files;
+    alvo.dispatchEvent(new Event('change', { bubbles: true }));
+    return Promise.resolve();
+  }
+  function montar() {
+    const raiz = document.getElementById('cesta-midia');
+    if (!raiz || raiz.dataset.pronta || !window.CestaDropzone) return;
+    raiz.dataset.pronta = '1';
+    new window.CestaDropzone(raiz, {
+      titulo: 'Arremesse na cesta',
+      sub: 'Opcional: solte o áudio ou vídeo aqui e jogue na cesta. Depois clique em Transcrever.',
+      aceitar: 'audio/*,video/*', multiplos: false,
+      upload: (arquivo, progresso) => entregar(arquivo).then(() => { if (progresso) progresso(1); }),
+    });
+  }
+  new MutationObserver(montar).observe(document.documentElement, { childList: true, subtree: true });
+  window.addEventListener('load', montar);
+})();
+</script>
+"""
+
+with gr.Blocks(title="Mídia e transcrição") as app:
+    gr.Markdown("# Mídia e transcrição\nBaixe vídeos e transcreva arquivos na mesma tela. Downloads precisam de internet; transcrição e OCR usam os recursos instalados no computador.")
 
     with gr.Tab("Áudio / Vídeo"):
         with gr.Row():
@@ -345,8 +500,11 @@ with gr.Blocks(title="Transcritor NPU") as app:
                     label="Áudio ou vídeo (arquivo, arraste ou Ctrl+V)",
                     file_types=["audio", "video"],
                     type="filepath",
+                    elem_id="entrada-midia",
                 )
-                url = gr.Textbox(label="…ou cole um link (YouTube etc.)", placeholder="https://")
+                with gr.Accordion("Arremessar na cesta (opcional)", open=False):
+                    gr.HTML('<div id="cesta-midia"></div>')
+                url = gr.Textbox(label="…ou cole um link (só o áudio é usado; para guardar a mídia, use a aba Baixar)", placeholder="https://")
                 dispositivo = gr.Dropdown(["NPU", "GPU", "CPU"], value="NPU", label="Dispositivo")
                 idioma = gr.Dropdown(list(IDIOMAS), value="Português", label="Idioma")
                 botao = gr.Button("Transcrever", variant="primary")
@@ -355,6 +513,29 @@ with gr.Blocks(title="Transcritor NPU") as app:
                 downloads = gr.File(label="Baixar (.txt / .srt)", file_count="multiple")
                 info = gr.Markdown()
         botao.click(transcrever, [entrada, url, dispositivo, idioma], [texto, downloads, info])
+
+    with gr.Tab("Baixar"):
+        gr.Markdown("YouTube, Instagram e outros links. Instagram precisa de `cookies.txt` (exportado do navegador logado) ao lado do `app.py`.")
+        with gr.Row():
+            with gr.Column(scale=1):
+                url_b = gr.Textbox(label="Link", placeholder="https://")
+                modo_b = gr.Radio(MODOS_DOWNLOAD, value="Vídeo", label="O que baixar")
+                qual_b = gr.Dropdown(QUALIDADES, value="720p", label="Qualidade do vídeo")
+                pasta_b = gr.Textbox(label="Pasta de saída", value=str(PASTA_DOWNLOADS))
+                disp_b = gr.Dropdown(["NPU", "GPU", "CPU"], value="NPU", label="Dispositivo (para transcrever)")
+                idioma_b = gr.Dropdown(list(IDIOMAS), value="Português", label="Idioma (para transcrever)")
+                botao_b = gr.Button("Baixar")
+                botao_bt = gr.Button("Baixar e transcrever", variant="primary")
+            with gr.Column(scale=2):
+                info_b = gr.Markdown()
+                texto_b = gr.Textbox(label="Transcrição", lines=12, buttons=["copy"])
+                downloads_b = gr.File(label="Baixar (.txt / .srt)", file_count="multiple")
+                hist_b = gr.Dataframe(
+                    headers=["Quando", "Título", "Tipo", "Status", "Arquivo / erro"],
+                    value=tabela_historico, label="Histórico de downloads", interactive=False)
+        botao_b.click(baixar, [url_b, modo_b, qual_b, pasta_b], [info_b, hist_b])
+        botao_bt.click(baixar_e_transcrever, [url_b, modo_b, qual_b, pasta_b, disp_b, idioma_b],
+                       [texto_b, downloads_b, info_b, hist_b])
 
     with gr.Tab("Imagem (OCR)"):
         with gr.Row():
@@ -383,4 +564,4 @@ with gr.Blocks(title="Transcritor NPU") as app:
         botao_pdf.click(transcrever_pdf, [pdf, idioma_pdf], [texto_pdf, download_pdf])
 
 if __name__ == "__main__":
-    app.launch(server_name="127.0.0.1", inbrowser=True, head=COLAR_JS)
+    app.launch(server_name="127.0.0.1", inbrowser=True, head=montar_head())

@@ -144,3 +144,43 @@ def test_downloader_plataforma_e_validacao():
 def test_pasta_com_porcento_nao_vira_campo_do_template(tmp_path):
     opts = downloader.build_options("720p", False, False, str(tmp_path / "100% pronto"), lambda d: None)
     assert "100%% pronto" in opts["outtmpl"]
+
+
+def test_playlist_e_recusada_antes_de_baixar():
+    chamadas = []
+
+    class YDL:
+        def extract_info(self, url, download=True):
+            chamadas.append(download)
+            return {"_type": "playlist", "entries": [{"title": "a"}, {"title": "b"}]}
+
+    with pytest.raises(downloader.DownloadFailed, match="único vídeo"):
+        downloader.extrair_um_video(YDL(), "https://youtube.com/playlist?list=x")
+    assert chamadas == [False]  # nada foi baixado
+
+
+def test_video_unico_resolve_sem_baixar_e_depois_processa():
+    passos = []
+
+    class YDL:
+        def extract_info(self, url, download=True):
+            passos.append(("extract", download))
+            return {"title": "v", "id": "1"}
+
+        def process_ie_result(self, info, download=True):
+            passos.append(("process", download))
+            return {**info, "requested_downloads": []}
+
+    info = downloader.extrair_um_video(YDL(), "https://youtu.be/1")
+    assert info["title"] == "v" and passos == [("extract", False), ("process", True)]
+
+
+def test_pasta_sem_permissao_vira_download_failed(ambiente, monkeypatch, tmp_path):
+    monkeypatch.setitem(sys.modules, "yt_dlp", _yt_dlp_falso(tmp_path / "x.mp4"))
+
+    def nega(*a, **k):
+        raise PermissionError(13, "Permissão negada")
+
+    monkeypatch.setattr(downloader.os, "makedirs", nega)
+    with pytest.raises(downloader.DownloadFailed, match="pasta de destino"):
+        downloader.run_download("https://youtu.be/abc", "720p", False, False, str(tmp_path / "sem"), lambda d: None)

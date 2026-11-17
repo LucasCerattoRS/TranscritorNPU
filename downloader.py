@@ -231,6 +231,20 @@ def build_options(quality: str, audio_only: bool, subtitles: bool, folder: str, 
     return opts
 
 
+def extrair_um_video(ydl, url):
+    """Resolve o link SEM baixar e recusa playlist antes de qualquer download.
+
+    `noplaylist` não impede links explícitos de playlist: com download=True o
+    yt-dlp baixaria todos os itens e só o primeiro seria usado.
+    """
+    info = ydl.extract_info(url, download=False)
+    if not isinstance(info, dict) or info.get("entries") is not None or info.get("_type") == "playlist":
+        raise DownloadFailed("Use o link de um único vídeo (playlists não são aceitas).")
+    if hasattr(ydl, "process_ie_result"):
+        return ydl.process_ie_result(info, download=True)
+    return ydl.extract_info(url, download=True)
+
+
 def run_download(
     url: str,
     quality: str,
@@ -261,18 +275,23 @@ def run_download(
         opts = build_options(quality, audio_only, subtitles, folder, progress_hook)
     except CaminhoLongo as exc:
         raise DownloadFailed(str(exc)) from exc
-    os.makedirs(folder, exist_ok=True)
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError as exc:
+        raise DownloadFailed(f"Não consegui usar a pasta de destino: {exc.strerror or exc}") from exc
     opts.update(extra_opts or {})
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = extrair_um_video(ydl, url)
     except yt_dlp.utils.DownloadError as exc:
         m = str(exc).lower()
         no_video = "no video formats found" in m or "there is no video in this post" in m
         if no_video and detect_platform(url) == "instagram":
             raise NoVideoContent(_friendly_error(str(exc))) from exc
         raise DownloadFailed(_friendly_error(str(exc))) from exc
+    except DownloadFailed:
+        raise
     except Exception as exc:  # noqa: BLE001 - qualquer falha vira erro amigável
         raise DownloadFailed(_friendly_error(str(exc))) from exc
 

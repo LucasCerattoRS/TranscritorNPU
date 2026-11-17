@@ -184,10 +184,10 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
 
     try:
         with yt_dlp.YoutubeDL(opcoes) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if not isinstance(info, dict) or info.get("entries") is not None:
-                raise gr.Error("Use o link de um único vídeo.")
+            info = downloader.extrair_um_video(ydl, url)
             caminho = ydl.prepare_filename(info)
+    except downloader.DownloadFailed as e:
+        raise gr.Error(str(e))
     except gr.Error:
         raise
     except Exception as e:

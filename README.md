@@ -8,8 +8,9 @@ Feito para aproveitar a **NPU** (Neural Processing Unit) de notebooks Intel Core
 (Meteor Lake em diante), mas também roda em GPU integrada ou CPU.
 
 Além de áudio/vídeo, também extrai texto de **imagens (OCR)** e de **PDFs**
-(nativo ou escaneado), e aceita **links** (YouTube etc.) diretamente, sem
-precisar baixar o arquivo manualmente antes.
+(nativo ou escaneado). Também **baixa** vídeo ou só áudio de YouTube, Instagram e
+outros links (aba **Baixar**), com histórico, e faz **Baixar e transcrever** em um
+clique — sem trocar de app.
 
 ## Estado
 
@@ -78,6 +79,16 @@ Na aba **Áudio / Vídeo**: escolha o dispositivo (NPU/GPU/CPU) e o idioma, envi
 arquivo, arraste, cole com Ctrl+V ou cole um link — e clique em Transcrever. Gera
 `.txt` e `.srt` (com timestamps) em `saidas/`.
 
+Na aba **Baixar**: cole o link, escolha Vídeo (mp4, 360p/720p/1080p/Melhor) ou Só áudio
+(mp3) e a pasta de saída (padrão `saidas/downloads/`). **Baixar** só salva a mídia;
+**Baixar e transcrever** salva e já transcreve (NPU→GPU→CPU, como na outra aba). Se a
+transcrição falhar, a mídia continua na pasta e a tela diz onde. O histórico dos
+downloads fica por usuário em `~/.local/share/transcritor-npu/historico.json` (Linux) ou
+`%APPDATA%\transcritor-npu\historico.json` (Windows), fora do repositório. Precisa de
+internet, `ffmpeg` e (YouTube) Node.js. **Instagram** exige login: exporte o `cookies.txt`
+do navegador logado (extensão "Get cookies.txt") para a pasta do `app.py` — o arquivo
+está no `.gitignore` e nunca deve ser versionado. Sem ele, o app tenta o Brave fechado.
+
 Na aba **Imagem (OCR)**: envie, arraste ou cole (Ctrl+V) uma imagem e clique em
 Extrair texto. Gera `.txt` em `saidas/`.
 
@@ -101,7 +112,9 @@ CPU é a mais lenta, mas sempre disponível.
 
 | Caminho | O que é |
 |---|---|
-| `app.py` | O app inteiro: decodificação (ffmpeg), download (yt-dlp), Whisper (OpenVINO), OCR (Tesseract), PDF (PyMuPDF) e a UI Gradio. |
+| `app.py` | O app: decodificação (ffmpeg), Whisper (OpenVINO), OCR (Tesseract), PDF (PyMuPDF), aba Baixar e a UI Gradio. |
+| `downloader.py` / `historico.py` | Download (yt-dlp) e histórico, copiados e adaptados do projeto irmão `video-downloader`. |
+| `test/test_baixar.py` | Download com yt-dlp falso (sem rede), histórico e "Baixar e transcrever" com falha de transcrição. |
 | `test/test_srt.py` | Testes das funções puras (`_ts_srt`, `gerar_srt`, `_nome_seguro`). |
 | `test/test_fluxo_transcricao.py` | Fluxo de `transcrever` com pipeline/ffmpeg falsos: nomes com acento, limpeza de temporários, erro do ffmpeg, SRT sem trechos vazios. |
 | `test/conftest.py` | Stubs das dependências pesadas para os testes. |

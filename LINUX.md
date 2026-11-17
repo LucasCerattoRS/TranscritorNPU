@@ -21,6 +21,10 @@ A NPU (Intel AI Boost) **não é exclusiva do Windows**. Duas peças já existem
 O `app.py` em si (Python + Gradio + ffmpeg + pytesseract + yt-dlp) já é 100% cross-platform —
 nenhuma linha de código muda. O trabalho é todo de sistema operacional/driver.
 
+A aba **Baixar** (YouTube/Instagram) usa `ffmpeg` e Node.js do sistema (`sudo dnf install ffmpeg nodejs`)
+e grava o histórico em `~/.local/share/transcritor-npu/` (respeita `XDG_DATA_HOME`). Instagram: coloque
+o `cookies.txt` (nunca versionado) ao lado do `app.py`; o fallback "cookies do Brave" só vale com o Brave fechado.
+
 ## Passo a passo (quando for fazer)
 
 1. **Checar o kernel do Fedora**: `uname -r`. Se >= 6.8, rodar `lsmod | grep ivpu` e

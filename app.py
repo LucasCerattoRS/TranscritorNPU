@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
+from urllib.parse import urlparse
 
 import fitz  # PyMuPDF
 import numpy as np
@@ -123,8 +124,19 @@ def carregar_audio(caminho: str) -> np.ndarray:
     return audio
 
 
-def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str, str]:
+def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress, *, video=False, altura=720) -> tuple[str, str]:
     """Baixa só a faixa de áudio de uma URL (YouTube etc.) via yt-dlp, sem baixar o vídeo inteiro."""
+
+    url = (url or "").strip()
+    try:
+        parsed = urlparse(url)
+        valido = parsed.scheme in ("http", "https") and parsed.hostname and not any(c.isspace() for c in url)
+    except ValueError:
+        valido = False
+    if not valido:
+        raise gr.Error("Cole um link HTTP ou HTTPS válido.")
+    if video and shutil.which("ffmpeg") is None:
+        raise gr.Error("Instale ffmpeg para baixar e juntar vídeo e áudio.")
 
     def avisar(d):
         if d["status"] == "downloading":
@@ -133,7 +145,8 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
 
     opcoes = {
         "format": "bestaudio/best",
-        "outtmpl": str(Path(pasta_tmp) / "%(id)s.%(ext)s"),
+        "outtmpl": str(Path(pasta_tmp).as_posix().replace("%", "%%") + "/%(id).64B.%(ext)s"),
+        "windowsfilenames": True,
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
@@ -144,6 +157,12 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
         # yt-dlp novo baixa o solver dos desafios (ejs) do GitHub; sem isso o YouTube devolve 403.
         "remote_components": ["ejs:github"],
     }
+
+    if video:
+        if altura not in (360, 720, 1080):
+            raise gr.Error("Escolha 360, 720 ou 1080 linhas.")
+        opcoes["format"] = f"bv*[height<={altura}]+ba/b[height<={altura}]"
+        opcoes["merge_output_format"] = "mp4"
 
     # Instagram (e outros sites logados) exigem sessão autenticada. Ordem de preferência:
     #  1) cookies.txt (formato Netscape) ao lado do app.py — rota mais confiável no
@@ -167,10 +186,34 @@ def baixar_de_url(url: str, pasta_tmp: str, progress: gr.Progress) -> tuple[str,
     try:
         with yt_dlp.YoutubeDL(opcoes) as ydl:
             info = ydl.extract_info(url, download=True)
+            if not isinstance(info, dict) or info.get("entries") is not None:
+                raise gr.Error("Use o link de um único vídeo.")
             caminho = ydl.prepare_filename(info)
+            if video:
+                # O merge pode mudar a extensão; ignore fragmentos e metadados.
+                candidatos = [p for p in Path(pasta_tmp).iterdir()
+                              if p.is_file() and p.suffix.lower() in (".mp4", ".webm", ".mkv", ".mov")
+                              and not re.search(r"\.f\d+\.", p.name)]
+                if len(candidatos) != 1:
+                    raise gr.Error("Download não produziu um único vídeo final.")
+                caminho = str(candidatos[0])
+    except gr.Error:
+        raise
     except Exception as e:
-        raise gr.Error(f"Não consegui baixar o áudio dessa URL: {e}")
+        raise gr.Error(f"Não consegui baixar essa URL: {e}")
     return caminho, info.get("title") or "audio_url"
+
+
+def baixar_video(url, qualidade, progress=gr.Progress()):
+    """Mantém a mídia local mesmo se a transcrição posterior falhar."""
+    if qualidade not in ("360p", "720p", "1080p"):
+        raise gr.Error("Escolha a qualidade do vídeo.")
+    pasta = SAIDAS / "videos" / uuid4().hex
+    pasta.mkdir(parents=True)
+    # Em caso de falha, arquivos parciais ficam na pasta (diagnóstico); nunca são entregues como prontos.
+    caminho, titulo = baixar_de_url(url, str(pasta), progress,
+                                    video=True, altura=int(qualidade[:-1]))
+    return caminho, caminho, f"Vídeo salvo: {titulo}. Clique em Transcrever para gerar texto e legendas."
 
 
 def _ts_srt(segundos: float) -> str:
@@ -335,8 +378,8 @@ window.addEventListener('paste', (e) => {
 </script>
 """
 
-with gr.Blocks(title="Transcritor NPU") as app:
-    gr.Markdown("# 🎙️ Transcritor NPU\nWhisper large-v3-turbo e OCR rodando localmente no seu Intel Core Ultra.")
+with gr.Blocks(title="Mídia e transcrição") as app:
+    gr.Markdown("# Mídia e transcrição\nBaixe vídeos e transcreva arquivos na mesma tela. Downloads precisam de internet; transcrição e OCR usam os recursos instalados no computador.")
 
     with gr.Tab("Áudio / Vídeo"):
         with gr.Row():
@@ -346,7 +389,10 @@ with gr.Blocks(title="Transcritor NPU") as app:
                     file_types=["audio", "video"],
                     type="filepath",
                 )
-                url = gr.Textbox(label="…ou cole um link (YouTube etc.)", placeholder="https://")
+                url = gr.Textbox(label="Link do YouTube ou Instagram", placeholder="https://")
+                qualidade = gr.Dropdown(["360p", "720p", "1080p"], value="720p", label="Qualidade do vídeo")
+                baixar = gr.Button("Baixar vídeo e preparar transcrição")
+                midia = gr.File(label="Vídeo salvo", interactive=False)
                 dispositivo = gr.Dropdown(["NPU", "GPU", "CPU"], value="NPU", label="Dispositivo")
                 idioma = gr.Dropdown(list(IDIOMAS), value="Português", label="Idioma")
                 botao = gr.Button("Transcrever", variant="primary")
@@ -354,6 +400,7 @@ with gr.Blocks(title="Transcritor NPU") as app:
                 texto = gr.Textbox(label="Transcrição", lines=18, buttons=["copy"])
                 downloads = gr.File(label="Baixar (.txt / .srt)", file_count="multiple")
                 info = gr.Markdown()
+        baixar.click(baixar_video, [url, qualidade], [entrada, midia, info])
         botao.click(transcrever, [entrada, url, dispositivo, idioma], [texto, downloads, info])
 
     with gr.Tab("Imagem (OCR)"):

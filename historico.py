@@ -1,4 +1,4 @@
-"""(Cópia adaptada de ~/Projetos/transcritor-npu/historico.py.)
+"""(Cópia adaptada de ~/Projetos/video-downloader/historico.py.)
 Histórico de downloads gravado em disco, para sobreviver a um reinício do servidor.
 
 Um arquivo JSON por usuário (não fica dentro da pasta do app, que pode estar no pendrive

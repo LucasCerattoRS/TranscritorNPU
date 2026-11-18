@@ -214,6 +214,16 @@ def baixar_midia(url, modo, qualidade, pasta, progress=gr.Progress()):
     registro = {"id": uuid4().hex, "url": limpa, "modo": modo, "qualidade": "" if audio else qualidade,
                 "pasta": pasta, "quando": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "status": "downloading", "titulo": "", "arquivo": "", "error": ""}
+    with _hist_lock:
+        _ativos.add(registro["id"])
+    try:
+        return _baixar_registrando(registro, limpa, audio, qualidade, pasta, progress)
+    finally:
+        with _hist_lock:
+            _ativos.discard(registro["id"])
+
+
+def _baixar_registrando(registro, limpa, audio, qualidade, pasta, progress):
     _registrar(registro)
 
     def avisar(d):
@@ -230,12 +240,17 @@ def baixar_midia(url, modo, qualidade, pasta, progress=gr.Progress()):
         registro.update(status="error", error=str(e))
         _registrar(registro)
         raise gr.Error(str(e))
+    except BaseException as e:  # erro inesperado: não deixar o item "baixando" para sempre
+        registro.update(status="error", error=f"Erro inesperado: {e}")
+        _registrar(registro)
+        raise
     registro.update(status="ok", titulo=titulo, arquivo=caminho)
     _registrar(registro)
     return caminho, titulo
 
 
 _hist_lock = Lock()
+_ativos: set[str] = set()  # ids de downloads em andamento neste processo (protegido por _hist_lock)
 
 
 def _registrar(registro: dict) -> None:
@@ -243,7 +258,7 @@ def _registrar(registro: dict) -> None:
     with _hist_lock:
         try:
             caminho = historico.caminho_padrao()
-            itens = [i for i in historico.carregar(caminho) if i.get("id") != registro["id"]]
+            itens = [i for i in historico.carregar(caminho, _ativos) if i.get("id") != registro["id"]]
             historico.salvar(caminho, [dict(registro)] + itens)
         except OSError as e:
             print(f"[aviso] não consegui gravar o histórico: {e}")
@@ -251,7 +266,7 @@ def _registrar(registro: dict) -> None:
 
 def tabela_historico():
     with _hist_lock:
-        itens = historico.carregar(historico.caminho_padrao())
+        itens = historico.carregar(historico.caminho_padrao(), _ativos)
     return [[i.get("quando", ""), i.get("titulo") or i.get("url", ""), i.get("modo", ""),
              i.get("status", ""), i.get("arquivo") or i.get("error", "")] for i in itens]
 

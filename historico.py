@@ -28,11 +28,13 @@ def caminho_padrao() -> str:
     return os.path.join(base, "transcritor-npu", "historico.json")
 
 
-def carregar(caminho: str) -> list[dict]:
+def carregar(caminho: str, ativos=frozenset()) -> list[dict]:
     """Lê o histórico. Arquivo ausente ou ilegível = histórico vazio (nunca derruba o servidor).
 
     Jobs que estavam na fila ou baixando quando o servidor parou não vão continuar
-    (a fila vive na memória): voltam marcados como interrompidos.
+    (a fila vive na memória): voltam marcados como interrompidos. `ativos` são os ids
+    que ESTE processo ainda está baixando: esses não são interrompidos (senão recarregar
+    a página ou começar um segundo download marcaria o primeiro como interrompido).
     """
     try:
         with open(caminho, encoding="utf-8") as f:
@@ -45,7 +47,8 @@ def carregar(caminho: str) -> list[dict]:
     for item in itens:
         if not isinstance(item, dict) or "id" not in item:
             continue
-        if item.get("status") in ("queued", "downloading"):
+        if item.get("status") in ("queued", "downloading") and not (
+                isinstance(item["id"], str) and item["id"] in ativos):
             item["status"] = "error"
             item["error"] = "Interrompido: o servidor foi reiniciado."
         validos.append(item)

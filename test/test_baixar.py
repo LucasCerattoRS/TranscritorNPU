@@ -130,6 +130,8 @@ def test_historico_marca_interrompidos_e_ignora_arquivo_corrompido(tmp_path):
     historico.salvar(str(arq), [{"id": "1", "status": "downloading"}, {"id": "2", "status": "ok"}])
     itens = historico.carregar(str(arq))
     assert [i["status"] for i in itens] == ["error", "ok"]
+    historico.salvar(str(arq), [{"id": ["lista"], "status": "downloading"}, {"id": "2", "status": "downloading"}])
+    assert [i["status"] for i in historico.carregar(str(arq), {"2"})] == ["error", "downloading"]
     arq.write_text("{não é json", encoding="utf-8")
     assert historico.carregar(str(arq)) == []
 
@@ -184,3 +186,47 @@ def test_pasta_sem_permissao_vira_download_failed(ambiente, monkeypatch, tmp_pat
     monkeypatch.setattr(downloader.os, "makedirs", nega)
     with pytest.raises(downloader.DownloadFailed, match="pasta de destino"):
         downloader.run_download("https://youtu.be/abc", "720p", False, False, str(tmp_path / "sem"), lambda d: None)
+
+
+def test_historico_nao_interrompe_download_em_andamento_neste_processo(ambiente, monkeypatch):
+    """Recarregar a página ou começar outro download no meio de um download não pode
+    marcar o primeiro como "Interrompido: o servidor foi reiniciado"."""
+    vistos = {}
+    alvo_b = ambiente / "b.mp4"
+    yt_b = _yt_dlp_falso(alvo_b)
+
+    class YoutubeDL(_yt_dlp_falso(ambiente / "a.mp4").YoutubeDL):
+        def extract_info(self, url, download=True):
+            if download:  # 1ª chamada (download=False) resolve o link: é aí que o cenário roda
+                return super().extract_info(url, download)
+            vistos["tabela"] = app.tabela_historico()  # página recarregada no meio do download
+            monkeypatch.setitem(sys.modules, "yt_dlp", yt_b)
+            app.baixar_midia("https://youtu.be/b", "Vídeo", "720p", str(ambiente))  # 2º download
+            monkeypatch.setitem(sys.modules, "yt_dlp", yt_a)
+            vistos["depois_do_b"] = historico.carregar(historico.caminho_padrao())
+            return super().extract_info(url, download)
+
+    yt_a = types.ModuleType("yt_dlp")
+    yt_a.YoutubeDL = YoutubeDL
+    yt_a.utils = types.SimpleNamespace(DownloadError=_FalhaDownload)
+    monkeypatch.setitem(sys.modules, "yt_dlp", yt_a)
+
+    app.baixar_midia("https://youtu.be/a", "Vídeo", "720p", str(ambiente))
+
+    assert [linha[3] for linha in vistos["tabela"]] == ["downloading"]
+    # lido "de fora" (como num reinício): o B está ok e o A ficou gravado como baixando, não como erro
+    assert [(i["url"][-1], i["status"]) for i in vistos["depois_do_b"]] == [("b", "ok"), ("a", "error")]
+    assert vistos["depois_do_b"][1]["error"].startswith("Interrompido")
+    final = historico.carregar(historico.caminho_padrao())
+    assert [(i["url"][-1], i["status"]) for i in final] == [("a", "ok"), ("b", "ok")]
+    assert app._ativos == set()
+
+
+def test_erro_inesperado_no_download_nao_deixa_item_baixando(ambiente, monkeypatch):
+    monkeypatch.setitem(sys.modules, "yt_dlp", _yt_dlp_falso(erro=_FalhaDownload("x")))
+    monkeypatch.setattr(app, "_opcoes_yt_dlp", lambda: 1 / 0)
+    with pytest.raises(ZeroDivisionError):
+        app.baixar_midia("https://youtu.be/abc", "Vídeo", "720p", str(ambiente))
+    item = historico.carregar(historico.caminho_padrao())[0]
+    assert item["status"] == "error" and "inesperado" in item["error"]
+    assert app._ativos == set()

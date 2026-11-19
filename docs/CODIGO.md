@@ -9,7 +9,8 @@ como instalar; este arquivo explica **como** ele faz. Estado descrito: `main` em
 Um único processo Python. O `app.py` monta uma interface **Gradio** (servidor web local em
 `127.0.0.1`, o navegador abre sozinho) com quatro abas. Cada botão chama uma função Python
 comum; o Gradio faz a ponte entre o navegador e essas funções. Não há banco de dados nem
-nuvem: as entradas chegam como caminho de arquivo, as saídas vão para `saidas/`.
+nuvem: as entradas chegam como caminho de arquivo; transcrições e textos extraídos vão para
+`saidas/` e os downloads da aba Baixar, para a pasta escolhida (padrão `saidas/downloads/`).
 
 ```
 navegador (Gradio)                     app.py                           ferramentas externas
@@ -32,7 +33,7 @@ PDF → Texto    ── Extrair texto ▶ transcrever_pdf() ── texto nativo 
 | `downloader.py` | ~310 | Envoltório do yt-dlp: valida URL, detecta plataforma, monta opções, limita o comprimento do caminho (Windows), traduz erros. Cópia adaptada do repositório irmão `video-downloader` (copiada, não importada, para o app continuar portátil). |
 | `historico.py` | ~70 | Histórico de downloads em JSON fora da pasta do app, gravação atômica, limite de 200 itens. Também copiado do `video-downloader`. |
 | `estatico/cesta-dropzone.{js,css}` | — | Componente opcional "arremesse o arquivo na cesta" (JS puro, sem dependências). Se os arquivos não existirem, o app abre sem ele. |
-| `experimentos-openvino/` | — | Scripts de estudo (ResNet, Phi-3 por CLI e por HTTP). **Não fazem parte do app**; só `server.py` tem teste. |
+| `experimentos-openvino/` | — | Scripts de estudo (ResNet, Phi-3 por CLI e por HTTP). **Não fazem parte do app**; `server.py` e `chat_openvino.py` têm teste de encerramento. |
 | `test/` | — | pytest com stubs; ver [Testes](#testes). |
 | `iniciar.sh` / `Iniciar Transcritor.bat` | — | Atalhos: rodam `.venv/.../python app.py`. |
 
@@ -44,7 +45,7 @@ PDF → Texto    ── Extrair texto ▶ transcrever_pdf() ── texto nativo 
 | Tesseract no Windows | bloco `if sys.platform == "win32"` | Só fixa `C:\Program Files\Tesseract-OCR\tesseract.exe` se o `tesseract` não estiver no PATH. |
 | Idiomas | `IDIOMAS` (Whisper), `IDIOMAS_OCR` (Tesseract) | Rótulo da UI → código. Whisper recebe `config.language = "<|pt|>"`; "auto" não define idioma. |
 | Cache de modelo | `_pipelines`, `_pipeline_lock`, `obter_pipeline`, `invalidar_pipeline` | Um `WhisperPipeline` por dispositivo **pedido**. Se o pedido falha ao carregar, tenta o próximo (NPU→GPU→CPU; GPU→CPU) e guarda o resultado sob a chave do pedido. O lock impede duas cargas simultâneas do mesmo modelo. |
-| Recuperação da NPU | `_gerar_com_retry` | Se `generate` levanta `RuntimeError` com `DEVICE_LOST`, descarta o pipeline e repete **uma vez**. Um segundo `DEVICE_LOST` sobe para a UI. |
+| Recuperação de `DEVICE_LOST` | `_gerar_com_retry` | Se `generate` levanta `RuntimeError` com `DEVICE_LOST`, descarta o pipeline e repete **uma vez**. Um segundo `DEVICE_LOST` sobe para a UI. Vale para qualquer dispositivo, embora o problema conhecido seja o da NPU. |
 | Decodificação | `carregar_audio` | `ffmpeg ... -f f32le -` e `np.frombuffer` (sem arquivo temporário). ffmpeg ausente, erro de leitura ou áudio vazio viram `gr.Error` em português. |
 | Link na aba Áudio/Vídeo | `_opcoes_yt_dlp`, `baixar_de_url` | Baixa só `bestaudio` numa `TemporaryDirectory`, apagada no `finally` de `transcrever`. Para guardar a mídia, o caminho é a aba Baixar. |
 | Login para Instagram | `_opcoes_yt_dlp` | Ordem: `cookies.txt` ao lado do `app.py` (no `.gitignore`) → cookies do Brave (só com o Brave fechado) → sem login. Node.js resolve os desafios JS do YouTube (`js_runtimes`, `remote_components`). |
@@ -119,12 +120,12 @@ Qualidades: a UI oferece `360p/720p/1080p/Melhor`; `_QUALITY_FORMATS` não tem a
 | `DEVICE_LOST` repete uma vez; o segundo sobe; outro erro não repete | `_gerar_com_retry` | `test_estados_vazios.py` |
 | Entradas vazias/corrompidas não criam saída | `transcrever_imagem`, `transcrever_pdf` | `test_estados_vazios.py`, `test_auditoria.py` |
 | Playlist recusada antes de baixar | `downloader.extrair_um_video` | `test_baixar.py` |
-| `%` no nome da pasta não vira campo do template do yt-dlp | `build_options`, `baixar_de_url` | `test_baixar.py` |
+| `%` no nome da pasta não vira campo do template do yt-dlp | `build_options` (também escapado em `baixar_de_url`, sem teste) | `test_baixar.py` |
 | Pasta sem permissão vira mensagem, não traceback | `run_download` | `test_baixar.py` |
 | Falha na transcrição não perde a mídia baixada | `baixar_e_transcrever` | `test_baixar.py` |
 | Histórico: download em andamento vira "Interrompido" ao reabrir | `historico.carregar` | `test_baixar.py` |
 | Cesta é opcional e não injeta HTML | `montar_head` | `test_cesta.py` |
-| `server.py` sai com código ≠ 0 se o modelo não carrega | `experimentos-openvino/server.py` | `test_server_encerramento.py` |
+| `server.py` e `chat_openvino.py` saem com código ≠ 0 se o modelo não carrega | `experimentos-openvino/` | `test_server_encerramento.py` |
 
 ## Testes
 

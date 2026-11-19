@@ -1,3 +1,5 @@
+"""Experimento (fora do app): chat de linha de comando com Phi-3-mini int4 via optimum.intel.openvino.
+Ver experimentos-openvino/README.md."""
 import sys
 
 from optimum.intel.openvino import OVModelForCausalLM

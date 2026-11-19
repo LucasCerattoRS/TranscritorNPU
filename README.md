@@ -125,6 +125,7 @@ CPU é a mais lenta, mas sempre disponível.
 | `Iniciar Transcritor.bat` / `iniciar.sh` | Atalhos de inicialização (Windows / Linux). |
 | `LINUX.md` | Roteiro do port pro Fedora (driver `intel_vpu`, dependências). |
 | `experimentos-openvino/` | Scripts soltos de estudo (ResNet, Phi-3 por CLI e por HTTP). Não fazem parte do app. |
+| `docs/CODIGO.md` | Mapa do código: módulos, fluxos, regras de negócio × testes, como contribuir. |
 | `docs/estudo/ROTEIRO.md` | Roteiro de estudo do projeto. |
 | `modelo/`, `cache/`, `saidas/` | Criados localmente; fora do git. |
 

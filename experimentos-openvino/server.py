@@ -1,3 +1,5 @@
+"""Experimento (fora do app): o Phi-3-mini int4 servido por HTTP no formato /v1/chat/completions
+(FastAPI + uvicorn, 127.0.0.1:8000 por padrão). Testado por test/test_server_encerramento.py."""
 import sys
 import time
 

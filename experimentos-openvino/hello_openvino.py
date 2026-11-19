@@ -1,3 +1,5 @@
+"""Experimento (fora do app): classifica uma imagem com ResNet-50 em IR OpenVINO.
+Os pesos e a imagem não estão no repositório; ver experimentos-openvino/README.md."""
 import cv2
 import numpy as np
 import openvino as ov

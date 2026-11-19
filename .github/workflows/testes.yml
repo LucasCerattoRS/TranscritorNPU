@@ -13,5 +13,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install pytest numpy
+      # pytest 9.2 apaga atributos de MagicMock ao desfazer o monkeypatch e quebra os stubs.
+      - run: pip install "pytest<9.2" numpy
       - run: python -m pytest -q test

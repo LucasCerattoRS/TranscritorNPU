@@ -10,3 +10,9 @@ cookies.txt
 
 # PDFs pessoais de entrada — dados do usuario, nunca versionar
 entrada/
+
+# app iOS: gerados pelo XcodeGen e pelo build
+ios/*.xcodeproj/
+ios/Transcritor/Info.plist
+ios/build/
+ios/Nucleo/.build/
